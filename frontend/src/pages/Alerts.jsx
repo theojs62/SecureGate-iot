@@ -1,16 +1,21 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { http } from "../api/http.js";
 
 export default function Alerts() {
   const [alerts, setAlerts] = useState([]);
   const [status, setStatus] = useState("OPEN");
 
-  const load = async () => {
+  const load = useCallback(async () => {
     const { data } = await http.get(`/api/dashboard/alerts?status=${status}`);
     setAlerts(data);
-  };
+  }, [status]);
 
-  useEffect(() => { load(); }, [status]);
+  useEffect(() => {
+    load();
+
+    const t = setInterval(load, 3000);
+    return () => clearInterval(t);
+  }, [load]);
 
   const ack = async (id) => {
     await http.post(`/api/dashboard/alerts/${id}/ack`);
@@ -27,6 +32,12 @@ export default function Alerts() {
       <div className="rowBetween">
         <h3>Alertes</h3>
         <div className="row">
+          {/* si tu veux filtrer */}
+          {/* <select value={status} onChange={(e) => setStatus(e.target.value)}>
+            <option value="OPEN">OPEN</option>
+            <option value="ACK">ACK</option>
+            <option value="CLOSED">CLOSED</option>
+          </select> */}
           <button className="btn" onClick={load}>Rafraîchir</button>
         </div>
       </div>
@@ -51,18 +62,18 @@ export default function Alerts() {
               <td>{a.zoneId?.name || "-"}</td>
               <td>{a.message}</td>
               <td>
-                {a.status === "OPEN" && (
+                {a.status === "OPEN" ? (
                   <>
-                    <button className="btnSmall" onClick={() => ack(a._id)}>ACK</button>
                     <button className="btnSmall" onClick={() => close(a._id)}>CLOSE</button>
                   </>
+                ) : (
+                  <span className="muted">—</span>
                 )}
-                {a.status !== "OPEN" && <span className="muted">—</span>}
               </td>
             </tr>
           ))}
           {alerts.length === 0 && (
-            <tr><td colSpan="6" className="muted">Aucune alerte</td></tr>
+            <tr><td colSpan={6} className="muted">Aucune alerte</td></tr>
           )}
         </tbody>
       </table>

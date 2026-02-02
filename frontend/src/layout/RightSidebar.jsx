@@ -9,10 +9,8 @@ export default function RightSidebar() {
       <div className="sidebarTitle">Navigation</div>
 
       <NavLink className={linkClass} to="/dashboard/overview">Accueil</NavLink>
-      <NavLink className={linkClass} to="/dashboard/presence">Présence</NavLink>
-      <NavLink className={linkClass} to="/dashboard/access-logs">Historique accès Badge</NavLink>
+      <NavLink className={linkClass} to="/dashboard/access-events">Historique accès Badge</NavLink>
       <NavLink className={linkClass} to="/dashboard/alerts">Alertes</NavLink>
-      <NavLink className={linkClass} to="/dashboard/sensors">Capteurs</NavLink>
       <NavLink className={linkClass} to="/dashboard/users">Utilisateurs</NavLink>
     </aside>
   );

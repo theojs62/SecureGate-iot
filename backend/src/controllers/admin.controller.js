@@ -14,7 +14,12 @@ const userCreateSchema = z.object({
 });
 
 async function listUsers(req, res) {
-  const users = await User.find().select("-passwordHash").sort({ createdAt: -1 }).lean();
+  const users = await User.find()
+    .select("-passwordHash")
+    .sort({ createdAt: -1 })
+    .populate("badgeId", "uid active isActive role") // ✅ récupère le badge
+    .lean();
+
   res.json(users);
 }
 
@@ -53,13 +58,32 @@ async function createBadge(req, res) {
   const parsed = badgeCreateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Invalid body" });
 
+  const { uid, userId, active } = parsed.data;
+
+  const user = await User.findById(userId);
+  if (!user) return res.status(404).json({ error: "User not found" });
+
+  const existingUid = await Badge.findOne({ uid }).lean();
+  if (existingUid) return res.status(409).json({ error: "Badge UID already exists" });
+
+  if (user.badgeId) return res.status(409).json({ error: "User already has a badge" });
+
   const badge = await Badge.create({
-    uid: parsed.data.uid,
-    userId: parsed.data.userId,
-    active: parsed.data.active ?? true
+    uid,
+    userId,             
+    active: active ?? true
   });
-  res.status(201).json(badge);
+
+  user.badgeId = badge._id;
+  await user.save();
+
+  const out = await Badge.findById(badge._id)
+    .populate("userId", "firstName lastName email role")
+    .lean();
+
+  res.status(201).json(out);
 }
+
 
 async function setBadgeActive(req, res) {
   const { active } = req.body;

@@ -1,13 +1,12 @@
+// exemple axios
 import axios from "axios";
 
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8080";
-
 export const http = axios.create({
-  baseURL: API_BASE
+  baseURL: "http://localhost:8080",
 });
 
 http.interceptors.request.use((config) => {
-  const token = localStorage.getItem("token");
+  const token = localStorage.getItem("token"); // ou sessionStorage
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });

@@ -24,7 +24,6 @@ export default function Users() {
             <th>Nom</th>
             <th>Email</th>
             <th>Rôle</th>
-            <th>Créé le</th>
           </tr>
         </thead>
         <tbody>
@@ -33,7 +32,6 @@ export default function Users() {
               <td>{u.firstName} {u.lastName}</td>
               <td>{u.email}</td>
               <td>{u.role}</td>
-              <td>{new Date(u.createdAt).toLocaleString()}</td>
             </tr>
           ))}
           {users.length === 0 && (

@@ -1,31 +1,60 @@
 services:
-  mongo:
-    image: mongo:7
-    container_name: cesi_mongo
+  postgres:
+    image: postgres:16
+    container_name: cesi_postgres
+    environment:
+      POSTGRES_USER: cesi
+      POSTGRES_PASSWORD: cesi_password
+      POSTGRES_DB: cesi_access
     ports:
-      - "27017:27017"
+      - "5432:5432"
     volumes:
-      - mongo_data:/data/db
+      - pg_data:/var/lib/postgresql/data
+
+  mqtt:
+    image: eclipse-mosquitto:2
+    container_name: cesi_mqtt
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./mosquitto/config:/mosquitto/config
+      - ./mosquitto/data:/mosquitto/data
+      - ./mosquitto/log:/mosquitto/log
 
   backend:
     build: ./backend
     container_name: cesi_backend
     environment:
       - PORT=8080
-      - MONGO_URI=mongodb://mongo:27017/cesi_access
+
+      # PostgreSQL
+      - DATABASE_URL=postgresql://cesi:cesi_password@postgres:5432/cesi_access
+
+      # Sécurité
       - JWT_SECRET=CHANGE_ME_SUPER_SECRET
       - PRESENCE_BADGE_WINDOW_MS=120000
-      # SMTP optional:
+      - ALERT_COOLDOWN_MS=60000
+
+      # SMTP (optionnel)
       - SMTP_HOST=
       - SMTP_PORT=587
       - SMTP_USER=
       - SMTP_PASS=
       - ALERT_EMAIL_TO=securite@cesi.fr
       - ALERT_EMAIL_FROM=robot@cesi.fr
+
+      # MQTT
+      - MQTT_URL=mqtt://mqtt:1883
+      - MQTT_USERNAME=admin
+      - MQTT_PASSWORD=admin123
+      - MQTT_ROOT_TOPIC=CESI/#
+
     ports:
       - "8080:8080"
     depends_on:
-      - mongo
+      - postgres
+      - mqtt
 
   frontend:
     build: ./frontend
@@ -36,4 +65,4 @@ services:
       - backend
 
 volumes:
-  mongo_data:
+  pg_data:

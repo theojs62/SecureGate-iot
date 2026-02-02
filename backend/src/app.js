@@ -20,9 +20,12 @@ function createApp() {
   app.get("/health", (req, res) => res.json({ ok: true }));
 
   app.use("/api/auth", authRoutes);
+  app.use("/api/users", require("./routes/users"));
   app.use("/api/admin", adminRoutes);
   app.use("/api/events", eventsRoutes);
   app.use("/api/dashboard", dashboardRoutes);
+  app.use("/api/badges", require("./routes/badges"));
+  app.use("/api/dashboard/access-events", require("./routes/accessEvents"));
 
   app.use(notFound);
   app.use(errorHandler);
