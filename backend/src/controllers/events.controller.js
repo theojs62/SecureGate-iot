@@ -1,9 +1,5 @@
 const { z } = require("zod");
-const Badge = require("../models/Badge");
-const AccessLog = require("../models/AccessLog");
-const Sensor = require("../models/Sensor");
-const PresenceEvent = require("../models/PresenceEvent");
-const Zone = require("../models/Zone");
+const { pool } = require("../config/db");
 const { createAlert } = require("../services/alertService");
 
 const badgeScanSchema = z.object({
@@ -18,8 +14,19 @@ async function badgeScan(req, res) {
 
   const { badgeUid, zoneId, direction } = parsed.data;
 
-  const badge = await Badge.findOne({ uid: badgeUid }).lean();
-  const zone = await Zone.findById(zoneId).lean();
+  const badgeRes = await pool.query(
+    `SELECT id, owner_user_id AS "ownerUserId", is_active AS "isActive"
+     FROM badges
+     WHERE uid = $1
+     LIMIT 1`,
+    [badgeUid]
+  );
+  const badge = badgeRes.rows[0] || null;
+  const zoneRes = await pool.query(
+    "SELECT id, name FROM zones WHERE id = $1 LIMIT 1",
+    [zoneId]
+  );
+  const zone = zoneRes.rows[0] || null;
   if (!zone) return res.status(404).json({ error: "Zone not found" });
 
   let status = "DENIED";
@@ -27,8 +34,8 @@ async function badgeScan(req, res) {
   let userId = null;
 
   if (badge) {
-    userId = badge.userId;
-    if (!badge.active) {
+    userId = badge.ownerUserId;
+    if (!badge.isActive) {
       reason = "Badge inactif";
     } else {
       status = "GRANTED";
@@ -36,14 +43,15 @@ async function badgeScan(req, res) {
     }
   }
 
-  const log = await AccessLog.create({
-    badgeUid,
-    userId,
-    zoneId,
-    direction,
-    status,
-    reason
-  });
+  const logRes = await pool.query(
+    `INSERT INTO access_logs (badge_uid, user_id, zone_id, direction, status, reason, created_at, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,NOW(),NOW())
+     RETURNING id AS _id, badge_uid AS "badgeUid", user_id AS "userId",
+               zone_id AS "zoneId", direction, status, reason,
+               created_at AS "createdAt", updated_at AS "updatedAt"`,
+    [badgeUid, userId, zoneId, direction, status, reason]
+  );
+  const log = logRes.rows[0];
 
   // Alerte si refus
   if (status === "DENIED") {
@@ -72,31 +80,41 @@ async function presence(req, res) {
 
   const { sensorSerial, detected } = parsed.data;
 
-  const sensor = await Sensor.findOne({ serial: sensorSerial }).lean();
+  const sensorRes = await pool.query(
+    `SELECT id, zone_id AS "zoneId" FROM sensors WHERE serial = $1 LIMIT 1`,
+    [sensorSerial]
+  );
+  const sensor = sensorRes.rows[0] || null;
   if (!sensor) return res.status(404).json({ error: "Sensor not found" });
 
-  await Sensor.updateOne({ _id: sensor._id }, { $set: { lastSeenAt: new Date() } });
+  await pool.query("UPDATE sensors SET last_seen_at = NOW(), updated_at = NOW() WHERE id = $1", [sensor.id]);
 
-  const pe = await PresenceEvent.create({
-    sensorId: sensor._id,
-    zoneId: sensor.zoneId,
-    detected
-  });
+  const peRes = await pool.query(
+    `INSERT INTO presence_events (sensor_id, zone_id, detected, created_at, updated_at)
+     VALUES ($1,$2,$3,NOW(),NOW())
+     RETURNING id AS _id, sensor_id AS "sensorId", zone_id AS "zoneId",
+               detected, created_at AS "createdAt", updated_at AS "updatedAt"`,
+    [sensor.id, sensor.zoneId, detected]
+  );
+  const pe = peRes.rows[0];
 
   // Si présence détectée -> vérifier badge récent GRANTED IN dans la même zone
   if (detected) {
     const windowMs = Number(process.env.PRESENCE_BADGE_WINDOW_MS || 120000);
     const since = new Date(Date.now() - windowMs);
 
-    const recentGranted = await AccessLog.findOne({
-      zoneId: sensor.zoneId,
-      status: "GRANTED",
-      direction: "IN",
-      createdAt: { $gte: since }
-    }).sort({ createdAt: -1 }).lean();
+    const recentGrantedRes = await pool.query(
+      `SELECT id FROM access_logs
+       WHERE zone_id = $1 AND status = 'GRANTED' AND direction = 'IN' AND created_at >= $2
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [sensor.zoneId, since]
+    );
+    const recentGranted = recentGrantedRes.rows[0] || null;
 
     if (!recentGranted) {
-      const zone = await Zone.findById(sensor.zoneId).lean();
+      const zoneRes = await pool.query("SELECT name FROM zones WHERE id = $1 LIMIT 1", [sensor.zoneId]);
+      const zone = zoneRes.rows[0] || null;
       await createAlert({
         mailer: req.app.locals.mailer,
         type: "NO_BADGE_PRESENCE",

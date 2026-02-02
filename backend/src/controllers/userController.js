@@ -1,6 +1,5 @@
 const bcrypt = require("bcryptjs");
-const User = require("../models/User");
-const Badge = require("../models/Badge");
+const { pool } = require("../config/db");
 
 async function createUser(req, res) {
   const { firstName, lastName, email, password, role, badgeUid, badgeId } = req.body;
@@ -9,115 +8,247 @@ async function createUser(req, res) {
     return res.status(400).json({ message: "firstName, lastName, email, password requis" });
   }
 
-  const existing = await User.findOne({ email: email.toLowerCase().trim() }).lean();
-  if (existing) return res.status(409).json({ message: "Email déjà utilisé" });
+  const normalizedEmail = email.toLowerCase().trim();
+  const existing = await pool.query("SELECT id FROM users WHERE email = $1 LIMIT 1", [normalizedEmail]);
+  if (existing.rows.length > 0) return res.status(409).json({ message: "Email déjà utilisé" });
 
   const passwordHash = await bcrypt.hash(password, 10);
 
-  let badge = null;
-  if (badgeId) {
-    badge = await Badge.findById(badgeId);
-    if (!badge) return res.status(404).json({ message: "Badge introuvable (badgeId)" });
-  } else if (badgeUid) {
-    badge = await Badge.findOne({ uid: badgeUid.trim() });
-    if (!badge) return res.status(404).json({ message: "Badge introuvable (badgeUid)" });
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    let badge = null;
+    if (badgeId) {
+      const badgeRes = await client.query(
+        `SELECT id, owner_user_id AS "ownerUserId", uid, is_active AS "isActive", role
+         FROM badges WHERE id = $1 LIMIT 1`,
+        [badgeId]
+      );
+      badge = badgeRes.rows[0] || null;
+      if (!badge) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ message: "Badge introuvable (badgeId)" });
+      }
+    } else if (badgeUid) {
+      const badgeRes = await client.query(
+        `SELECT id, owner_user_id AS "ownerUserId", uid, is_active AS "isActive", role
+         FROM badges WHERE uid = $1 LIMIT 1`,
+        [badgeUid.trim()]
+      );
+      badge = badgeRes.rows[0] || null;
+      if (!badge) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ message: "Badge introuvable (badgeUid)" });
+      }
+    }
+
+    if (badge && badge.ownerUserId) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({ message: "Ce badge est déjà assigné à un user" });
+    }
+
+    const userRes = await client.query(
+      `INSERT INTO users (first_name, last_name, email, password_hash, role, badge_id, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,NOW(),NOW())
+       RETURNING id`,
+      [
+        firstName.trim(),
+        lastName.trim(),
+        normalizedEmail,
+        passwordHash,
+        role || "user",
+        badge ? badge.id : null,
+      ]
+    );
+
+    const userId = userRes.rows[0].id;
+
+    if (badge) {
+      await client.query(
+        "UPDATE badges SET owner_user_id=$1, updated_at=NOW() WHERE id=$2",
+        [userId, badge.id]
+      );
+    }
+
+    const outRes = await client.query(
+      `SELECT u.id AS _id, u.first_name AS "firstName", u.last_name AS "lastName", u.email, u.role,
+              u.created_at AS "createdAt", u.updated_at AS "updatedAt",
+              CASE
+                WHEN b.id IS NULL THEN NULL
+                ELSE jsonb_build_object('_id', b.id, 'uid', b.uid, 'isActive', b.is_active, 'role', b.role)
+              END AS "badgeId"
+       FROM users u
+       LEFT JOIN badges b ON b.id = u.badge_id
+       WHERE u.id = $1`,
+      [userId]
+    );
+
+    await client.query("COMMIT");
+    res.status(201).json(outRes.rows[0]);
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
   }
-
-  if (badge && badge.ownerUserId) {
-    return res.status(409).json({ message: "Ce badge est déjà assigné à un user" });
-  }
-
-  const user = await User.create({
-    firstName: firstName.trim(),
-    lastName: lastName.trim(),
-    email: email.toLowerCase().trim(),
-    passwordHash,
-    role: role || "user",
-    badgeId: badge ? badge._id : null,
-  });
-
-  if (badge) {
-    badge.ownerUserId = user._id;
-    await badge.save();
-  }
-
-  const out = await User.findById(user._id)
-    .populate("badgeId", "uid isActive role")
-    .lean();
-
-  res.status(201).json(out);
 }
 
 async function listUsers(req, res) {
-  const rows = await User.find()
-    .sort({ createdAt: -1 })
-    .populate("badgeId", "uid isActive role")
-    .lean();
+  const { rows } = await pool.query(
+    `SELECT u.id AS _id, u.first_name AS "firstName", u.last_name AS "lastName", u.email, u.role,
+            u.created_at AS "createdAt", u.updated_at AS "updatedAt",
+            CASE
+              WHEN b.id IS NULL THEN NULL
+              ELSE jsonb_build_object('_id', b.id, 'uid', b.uid, 'isActive', b.is_active, 'role', b.role)
+            END AS "badgeId"
+     FROM users u
+     LEFT JOIN badges b ON b.id = u.badge_id
+     ORDER BY u.created_at DESC`
+  );
 
-  // masque passwordHash
-  const safe = rows.map(({ passwordHash, ...u }) => u);
-  res.json(safe);
+  res.json(rows);
 }
 
 async function setUserBadge(req, res) {
   const { id } = req.params;
   const { badgeId, badgeUid } = req.body;
 
-  const user = await User.findById(id);
-  if (!user) return res.status(404).json({ message: "User introuvable" });
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
 
-  if (user.badgeId) {
-    await Badge.updateOne({ _id: user.badgeId, ownerUserId: user._id }, { $set: { ownerUserId: null } });
-    user.badgeId = null;
+    const userRes = await client.query(
+      `SELECT id, badge_id AS "badgeId"
+       FROM users
+       WHERE id = $1
+       LIMIT 1`,
+      [id]
+    );
+    const user = userRes.rows[0];
+    if (!user) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ message: "User introuvable" });
+    }
+
+    if (user.badgeId) {
+      await client.query(
+        "UPDATE badges SET owner_user_id = NULL, updated_at = NOW() WHERE id = $1 AND owner_user_id = $2",
+        [user.badgeId, user.id]
+      );
+      await client.query("UPDATE users SET badge_id = NULL, updated_at = NOW() WHERE id = $1", [user.id]);
+    }
+
+    if (badgeId === null) {
+      const outNull = await client.query(
+        `SELECT u.id AS _id, u.first_name AS "firstName", u.last_name AS "lastName", u.email, u.role,
+                u.created_at AS "createdAt", u.updated_at AS "updatedAt",
+                CASE
+                  WHEN b.id IS NULL THEN NULL
+                  ELSE jsonb_build_object('_id', b.id, 'uid', b.uid, 'isActive', b.is_active, 'role', b.role)
+                END AS "badgeId"
+         FROM users u
+         LEFT JOIN badges b ON b.id = u.badge_id
+         WHERE u.id = $1`,
+        [user.id]
+      );
+      await client.query("COMMIT");
+      return res.json(outNull.rows[0]);
+    }
+
+    let badge = null;
+    if (badgeId) {
+      const badgeRes = await client.query(
+        `SELECT id, owner_user_id AS "ownerUserId", uid, is_active AS "isActive", role
+         FROM badges WHERE id = $1 LIMIT 1`,
+        [badgeId]
+      );
+      badge = badgeRes.rows[0] || null;
+      if (!badge) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ message: "Badge introuvable (badgeId)" });
+      }
+    } else if (badgeUid) {
+      const badgeRes = await client.query(
+        `SELECT id, owner_user_id AS "ownerUserId", uid, is_active AS "isActive", role
+         FROM badges WHERE uid = $1 LIMIT 1`,
+        [badgeUid.trim()]
+      );
+      badge = badgeRes.rows[0] || null;
+      if (!badge) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ message: "Badge introuvable (badgeUid)" });
+      }
+    } else {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ message: "badgeId ou badgeUid requis (ou badgeId:null)" });
+    }
+
+    if (badge.ownerUserId) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({ message: "Ce badge est déjà assigné" });
+    }
+
+    await client.query("UPDATE users SET badge_id = $1, updated_at = NOW() WHERE id = $2", [badge.id, user.id]);
+    await client.query("UPDATE badges SET owner_user_id = $1, updated_at = NOW() WHERE id = $2", [user.id, badge.id]);
+
+    const outRes = await client.query(
+      `SELECT u.id AS _id, u.first_name AS "firstName", u.last_name AS "lastName", u.email, u.role,
+              u.created_at AS "createdAt", u.updated_at AS "updatedAt",
+              CASE
+                WHEN b.id IS NULL THEN NULL
+                ELSE jsonb_build_object('_id', b.id, 'uid', b.uid, 'isActive', b.is_active, 'role', b.role)
+              END AS "badgeId"
+       FROM users u
+       LEFT JOIN badges b ON b.id = u.badge_id
+       WHERE u.id = $1`,
+      [user.id]
+    );
+
+    await client.query("COMMIT");
+    res.json(outRes.rows[0]);
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
   }
-
- 
-  if (badgeId === null) {
-    await user.save();
-    const outNull = await User.findById(user._id).populate("badgeId", "uid isActive role").lean();
-    const { passwordHash, ...safeNull } = outNull;
-    return res.json(safeNull);
-  }
-
-  // trouver badge à assigner
-  let badge = null;
-  if (badgeId) {
-    badge = await Badge.findById(badgeId);
-    if (!badge) return res.status(404).json({ message: "Badge introuvable (badgeId)" });
-  } else if (badgeUid) {
-    badge = await Badge.findOne({ uid: badgeUid.trim() });
-    if (!badge) return res.status(404).json({ message: "Badge introuvable (badgeUid)" });
-  } else {
-    return res.status(400).json({ message: "badgeId ou badgeUid requis (ou badgeId:null)" });
-  }
-
-  if (badge.ownerUserId) return res.status(409).json({ message: "Ce badge est déjà assigné" });
-
-  user.badgeId = badge._id;
-  await user.save();
-
-  badge.ownerUserId = user._id;
-  await badge.save();
-
-  const out = await User.findById(user._id).populate("badgeId", "uid isActive role").lean();
-  const { passwordHash, ...safe } = out;
-  res.json(safe);
 }
 
 // DELETE /api/users/:id (optionnel)
 async function deleteUser(req, res) {
   const { id } = req.params;
 
-  const user = await User.findById(id);
-  if (!user) return res.status(404).json({ message: "User introuvable" });
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
 
-  // unlink badge
-  if (user.badgeId) {
-    await Badge.updateOne({ _id: user.badgeId, ownerUserId: user._id }, { $set: { ownerUserId: null } });
+    const userRes = await client.query(
+      "SELECT id, badge_id AS \"badgeId\" FROM users WHERE id = $1 LIMIT 1",
+      [id]
+    );
+    const user = userRes.rows[0];
+    if (!user) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ message: "User introuvable" });
+    }
+
+    if (user.badgeId) {
+      await client.query(
+        "UPDATE badges SET owner_user_id = NULL, updated_at = NOW() WHERE id = $1 AND owner_user_id = $2",
+        [user.badgeId, user.id]
+      );
+    }
+
+    await client.query("DELETE FROM users WHERE id = $1", [user.id]);
+    await client.query("COMMIT");
+    res.json({ ok: true });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
   }
-
-  await user.deleteOne();
-  res.json({ ok: true });
 }
 
 module.exports = { createUser, listUsers, setUserBadge, deleteUser };

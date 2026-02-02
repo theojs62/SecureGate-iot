@@ -9,7 +9,7 @@ async function main() {
   const app = createApp();
   app.locals.mailer = createMailerFromEnv();
   
-  await connectDB(process.env.MONGO_URI);
+  await connectDB();
   const PORT = Number(process.env.PORT || 8080);
 
   app.listen(PORT, () => {

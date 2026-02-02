@@ -1,6 +1,4 @@
-const Alert = require("../models/Alert");
-const Zone = require("../models/Zone");
-const User = require("../models/User");
+const { pool } = require("../config/db");
 
 function parseEmails(str) {
   return (str || "")
@@ -21,10 +19,23 @@ async function sendAlertEmail(mailer, alertDoc) {
     return;
   }
 
-  const [zone, user] = await Promise.all([
-    alertDoc.zoneId ? Zone.findById(alertDoc.zoneId).lean() : null,
-    alertDoc.relatedUserId ? User.findById(alertDoc.relatedUserId).lean() : null,
+  const [zoneRes, userRes] = await Promise.all([
+    alertDoc.zoneId
+      ? pool.query("SELECT name FROM zones WHERE id = $1 LIMIT 1", [alertDoc.zoneId])
+      : Promise.resolve({ rows: [] }),
+    alertDoc.relatedUserId
+      ? pool.query(
+          `SELECT first_name AS "firstName", last_name AS "lastName", email
+           FROM users
+           WHERE id = $1
+           LIMIT 1`,
+          [alertDoc.relatedUserId]
+        )
+      : Promise.resolve({ rows: [] }),
   ]);
+
+  const zone = zoneRes.rows[0] || null;
+  const user = userRes.rows[0] || null;
 
   const subject = `[CESI] Alerte ${alertDoc.severity} - ${alertDoc.type}`;
 
@@ -57,15 +68,16 @@ async function createAlert({
   relatedBadgeUid = null,
   message,
 }) {
-  const alert = await Alert.create({
-    type,
-    severity,
-    zoneId,
-    relatedUserId,
-    relatedBadgeUid,
-    message,
-    status: "OPEN",
-  });
+  const { rows } = await pool.query(
+    `INSERT INTO alerts (type, severity, zone_id, related_user_id, related_badge_uid, message, status, created_at, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,'OPEN',NOW(),NOW())
+     RETURNING id AS _id, type, severity, zone_id AS "zoneId",
+               related_user_id AS "relatedUserId", related_badge_uid AS "relatedBadgeUid",
+               status, message, ack_by AS "ackBy", ack_at AS "ackAt",
+               created_at AS "createdAt", updated_at AS "updatedAt"`,
+    [type, severity, zoneId, relatedUserId, relatedBadgeUid, message]
+  );
+  const alert = rows[0];
 
   // email best effort
   try {

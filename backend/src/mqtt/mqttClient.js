@@ -78,7 +78,7 @@ async function routeMqttMessage(app, client, topic, data) {
     // Audit en SQL
     // on tente de retrouver badge_id/user_id si le badge existe
     const badgeRes = await pool.query(
-      "SELECT id, user_id FROM badges WHERE uid=$1 LIMIT 1",
+      "SELECT id, owner_user_id AS user_id FROM badges WHERE uid=$1 LIMIT 1",
       [badgeUid]
     );
     const badge = badgeRes.rows[0] || null;
@@ -113,7 +113,7 @@ async function routeMqttMessage(app, client, topic, data) {
     }
 
     const badgeRes = await pool.query(
-      "SELECT id, user_id FROM badges WHERE uid=$1 LIMIT 1",
+      "SELECT id, owner_user_id AS user_id FROM badges WHERE uid=$1 LIMIT 1",
       [uid]
     );
     const badge = badgeRes.rows[0] || null;
