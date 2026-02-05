@@ -48,7 +48,6 @@ export default function Alerts() {
             <th>Date</th>
             <th>Type</th>
             <th>Gravité</th>
-            <th>Zone</th>
             <th>Message</th>
             <th>Actions</th>
           </tr>
@@ -59,7 +58,6 @@ export default function Alerts() {
               <td>{new Date(a.createdAt).toLocaleString()}</td>
               <td>{a.type}</td>
               <td className={a.severity === "HIGH" ? "bad" : ""}>{a.severity}</td>
-              <td>{a.zoneId?.name || "-"}</td>
               <td>{a.message}</td>
               <td>
                 {a.status === "OPEN" ? (

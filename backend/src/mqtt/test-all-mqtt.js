@@ -14,7 +14,7 @@ if (process.env.DATABASE_URL) {
 }
 
 // ====== CONFIG ======
-const URL = process.env.MQTT_URL || "mqtt://10.121.195.246:1883";
+const URL = process.env.MQTT_URL || "mqtt://10.44.193.246:1883";
 const OPTS = {
   username: process.env.MQTT_USERNAME || "Sys_Admin",
   password: process.env.MQTT_PASSWORD || "zHq1tZS!G4$qRlfQ00!c",

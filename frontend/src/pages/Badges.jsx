@@ -9,7 +9,6 @@ export default function Badges() {
   const [type, setType] = useState("permanent");
   const [expiresAt, setExpiresAt] = useState("");
   const [ownerUserId, setOwnerUserId] = useState("");
-  const [isActive, setIsActive] = useState(true);
 
   const [msg, setMsg] = useState("");
 
@@ -29,37 +28,47 @@ export default function Badges() {
     setMsg("");
 
     try {
+      let expiresAtIso = null;
+
+      if (type === "temporary") {
+        if (!expiresAt) {
+          setMsg("La date de fin est obligatoire pour un badge temporaire");
+          return;
+        }
+
+        const parsed = new Date(expiresAt);
+        if (Number.isNaN(parsed.getTime())) {
+          setMsg("Date de fin invalide");
+          return;
+        }
+
+        expiresAtIso = parsed.toISOString();
+      }
+
       await http.post("/api/admin/badges", {
         uid,
         type,
-        expiresAt: type === "temporary" ? new Date(expiresAt).toISOString() : null,
-        ownerUserId: ownerUserId ? Number(ownerUserId) : null,
-        isActive
+        expiresAt: expiresAtIso,
+        ownerUserId: ownerUserId ? Number(ownerUserId) : null
       });
 
       setUid("");
       setExpiresAt("");
       setOwnerUserId("");
       setType("permanent");
-      setIsActive(true);
 
       await load();
-      setMsg("✅ Badge créé");
+      setMsg("Badge créé");
     } catch (err) {
       setMsg(" " + (err.response?.data?.error || err.message));
     }
   };
 
-  const toggleActive = async (id, next) => {
-    await http.post(`/api/admin/badges/${id}/active`, { isActive: next });
+  const assign = async (id, userId) => {
+    const nextOwnerUserId = userId === "" ? null : Number(userId);
+    await http.post(`/api/admin/badges/${id}/assign`, { ownerUserId: nextOwnerUserId });
     await load();
   };
-
-    const assign = async (id, userId) => {
-    const ownerUserId = userId === "" ? null : Number(userId);
-    await http.post(`/api/admin/badges/${id}/assign`, { ownerUserId });
-    await load();
-    };
 
   return (
     <div className="grid2">
@@ -93,11 +102,6 @@ export default function Badges() {
             ))}
           </select>
 
-          <label className="row">
-            <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
-            Actif
-          </label>
-
           <button className="btnPrimary" type="submit">Créer</button>
           {msg && <div className={msg.startsWith("✅") ? "ok" : "error"}>{msg}</div>}
         </form>
@@ -115,8 +119,8 @@ export default function Badges() {
               <th>UID</th>
               <th>Type</th>
               <th>Expire</th>
-              <th>Owner</th>
-              <th>Actif</th>
+              <th>Assigné à</th>
+              <th>Statut</th>
               <th>Action</th>
             </tr>
           </thead>
@@ -126,19 +130,15 @@ export default function Badges() {
                 <td>{b.uid}</td>
                 <td>{b.badge_type}</td>
                 <td>{b.expires_at ? new Date(b.expires_at).toLocaleString() : "—"}</td>
+                <td>{b.owner_email || "— non assigné —"}</td>
+                <td>{b.is_currently_active ? "Actif" : "Expiré"}</td>
                 <td>
                   <select value={b.owner_user_id || ""} onChange={(e) => assign(b.id, e.target.value)}>
-                    <option value="">—</option>
+                    <option value="">— désassigner —</option>
                     {users.map(u => (
                       <option key={u.id} value={u.id}>{u.email}</option>
                     ))}
                   </select>
-                </td>
-                <td>{b.is_active ? "✅" : "✅" }</td>
-                <td>
-                  <button className="btnSmall" onClick={() => toggleActive(b.id, !b.is_active)}>
-                    {b.is_active ? "Désactiver" : "Activer"}
-                  </button>
                 </td>
               </tr>
             ))}

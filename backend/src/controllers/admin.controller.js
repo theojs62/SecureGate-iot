@@ -156,8 +156,8 @@ async function createBadge(req, res) {
     );
 
     await client.query("COMMIT");
-    const { user, ...rest } = out.rows[0];
-    res.status(201).json({ ...rest, userId: user });
+    const { user: ownerUser, ...rest } = out.rows[0];
+    res.status(201).json({ ...rest, userId: ownerUser });
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;

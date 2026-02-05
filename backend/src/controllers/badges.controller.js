@@ -11,8 +11,34 @@ async function listBadges(req, res) {
   res.json(rows);
 }
 
+
+function publishBadgeCreatedEvent(req, badge) {
+  const client = req.app?.locals?.mqttClient;
+  if (!client || !client.connected) {
+    console.log("MQTT non connecté: événement de création badge non publié");
+    return;
+  }
+
+  const topic = process.env.MQTT_BADGE_CREATED_TOPIC || "CESI/Badge/Created";
+  const payload = JSON.stringify({
+    uid: badge.uid,
+    badgeId: badge.id,
+    type: badge.badge_type,
+    ownerUserId: badge.owner_user_id,
+    expiresAt: badge.expires_at
+  });
+
+  client.publish(topic, payload, { qos: 1, retain: false }, (err) => {
+    if (err) {
+      console.error("❌ MQTT publish badge create error:", err.message);
+      return;
+    }
+    console.log(` MQTT badge créé envoyé → ${topic} ${payload}`);
+  });
+}
+
 async function createBadge(req, res) {
-  const { uid, ownerUserId = null, type = "permanent", expiresAt = null, isActive = true } = req.body;
+  const { uid, ownerUserId = null, type = "permanent", expiresAt = null } = req.body;
 
   if (!uid || typeof uid !== "string") return res.status(400).json({ error: "uid is required" });
   if (!isValidBadgeType(type)) return res.status(400).json({ error: "type must be permanent|temporary" });
@@ -30,14 +56,21 @@ async function createBadge(req, res) {
 
   // convertir expiresAt ISO -> Date côté pg
   const expiresAtValue = expiresAt ? new Date(expiresAt) : null;
+  if (expiresAt && Number.isNaN(expiresAtValue.getTime())) {
+    return res.status(400).json({ error: "expiresAt must be a valid datetime" });
+  }
+  if (type === "temporary" && expiresAtValue <= new Date()) {
+    return res.status(400).json({ error: "expiresAt must be in the future for temporary badge" });
+  }
 
   const badge = await BadgeModel.create({
     uid: uid.trim(),
     ownerUserId: ownerUserId === null ? null : Number(ownerUserId),
     type,
-    expiresAt: expiresAtValue,
-    isActive: !!isActive
+    expiresAt: expiresAtValue
   });
+
+  publishBadgeCreatedEvent(req, badge);
 
   res.status(201).json(badge);
 }
@@ -68,26 +101,4 @@ async function assignBadge(req, res) {
   res.json(badge);
 }
 
-
-function toBigIntOr400(res, v, name = "id") {
-  const n = Number(v);
-  if (!Number.isFinite(n)) {
-    res.status(400).json({ error: `invalid ${name}` });
-    return null;
-  }
-  return n;
-}
-
-async function setBadgeActive(req, res) {
-  const id = toBigIntOr400(res, req.params.id, "badge id");
-  if (id === null) return;
-
-  const isActive = !!req.body.isActive;
-
-  const badge = await BadgeModel.setActive({ id, isActive });
-  if (!badge) return res.status(404).json({ error: "badge not found" });
-
-  res.json(badge);
-}
-
-module.exports = { listBadges, createBadge, assignBadge, setBadgeActive };
+module.exports = { listBadges, createBadge, assignBadge };
