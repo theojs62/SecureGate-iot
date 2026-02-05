@@ -32,7 +32,7 @@ export default function Interphone() {
     setMsg("");
     try {
       await http.post("/api/interphone/respond", { autorise });
-      const actionText = autorise ? "✅ Demande acceptée" : "⛔ Demande refusée";
+      const actionText = autorise ? "Demande acceptée" : "Demande refusée";
       setLastAction({
         id: pending.id,
         device: pending.device,
@@ -42,7 +42,7 @@ export default function Interphone() {
       setMsg(`${actionText} pour ${pending.device || "UNKNOWN"}`);
       await loadPending({ silent: true });
     } catch (e) {
-      setMsg("❌ Erreur: " + (e.response?.data?.error || e.message));
+      setMsg("Erreur: " + (e.response?.data?.error || e.message));
     } finally {
       setLoading(false);
     }
@@ -105,7 +105,7 @@ export default function Interphone() {
           </>
         )}
 
-        {msg && <div style={{ marginTop: 12 }} className={msg.startsWith("✅") ? "ok" : "error"}>{msg}</div>}
+        {msg && <div style={{ marginTop: 12 }} className={msg.startsWith("") ? "ok" : "error"}>{msg}</div>}
       </div>
 
       <div className="card" style={{ gridColumn: "span 4" }}>
@@ -116,7 +116,7 @@ export default function Interphone() {
           <div className="notifItem">
             <div><b>Demande #{lastAction.id}</b></div>
             <div>Device: {lastAction.device || "UNKNOWN"}</div>
-            <div>Décision: {lastAction.decision === "ACCEPTED" ? "✅ ACCEPTED" : "⛔ REFUSED"}</div>
+            <div>Décision: {lastAction.decision === "ACCEPTED" ? "ACCEPTER" : "REFUSER"}</div>
             <div className="muted small">{new Date(lastAction.at).toLocaleString()}</div>
           </div>
         )}

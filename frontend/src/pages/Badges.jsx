@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { http } from "../api/http.js";
 
 export default function Badges() {
@@ -32,13 +32,13 @@ export default function Badges() {
 
       if (type === "temporary") {
         if (!expiresAt) {
-          setMsg("La date de fin est obligatoire pour un badge temporaire");
+          setMsg("La date d'expiration est obligatoire pour un badge temporaire.");
           return;
         }
 
         const parsed = new Date(expiresAt);
         if (Number.isNaN(parsed.getTime())) {
-          setMsg("Date de fin invalide");
+          setMsg("La date d'expiration est invalide.");
           return;
         }
 
@@ -58,9 +58,9 @@ export default function Badges() {
       setType("permanent");
 
       await load();
-      setMsg("Badge créé");
+      setMsg("Badge créé avec succès.");
     } catch (err) {
-      setMsg(" " + (err.response?.data?.error || err.message));
+      setMsg(err.response?.data?.error || err.message || "Erreur lors de la création du badge.");
     }
   };
 
@@ -70,16 +70,34 @@ export default function Badges() {
     await load();
   };
 
+  const removeBadge = async (id, uidToDelete) => {
+    const confirmed = window.confirm(`Supprimer définitivement le badge ${uidToDelete} ?`);
+    if (!confirmed) return;
+
+    try {
+      await http.delete(`/api/admin/badges/${id}`);
+      await load();
+      setMsg("Badge supprimé avec succès.");
+    } catch (err) {
+      setMsg(err.response?.data?.error || err.message || "Suppression impossible.");
+    }
+  };
+
+  const canCreate = useMemo(() => uid.trim().length > 0, [uid]);
+
   return (
-    <div className="grid2">
+    <div className="">
       <div className="card">
-        <h3>Créer un badge</h3>
+        <div className="badgeCreateHeader">
+          <h3>Créer un badge</h3>
+          <p className="muted small">Ajoutez un nouveau badge et assignez-le si besoin.</p>
+        </div>
 
         <form onSubmit={submit} className="form">
-          <label>UID</label>
-          <input value={uid} onChange={(e) => setUid(e.target.value)} placeholder="ex: 4B 50 55 3E" />
+          <label>UID du badge</label>
+          <input value={uid} onChange={(e) => setUid(e.target.value)} placeholder="Ex : 4B 50 55 3E" />
 
-          <label>Type</label>
+          <label>Type de badge</label>
           <select value={type} onChange={(e) => setType(e.target.value)}>
             <option value="permanent">Permanent</option>
             <option value="temporary">Temporaire</option>
@@ -87,7 +105,7 @@ export default function Badges() {
 
           {type === "temporary" && (
             <>
-              <label>Expire le</label>
+              <label>Date d'expiration</label>
               <input type="datetime-local" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} />
             </>
           )}
@@ -95,21 +113,21 @@ export default function Badges() {
           <label>Utilisateur (optionnel)</label>
           <select value={ownerUserId} onChange={(e) => setOwnerUserId(e.target.value)}>
             <option value="">— non assigné —</option>
-            {users.map(u => (
+            {users.map((u) => (
               <option key={u.id} value={u.id}>
                 {u.email} ({u.role})
               </option>
             ))}
           </select>
 
-          <button className="btnPrimary" type="submit">Créer</button>
-          {msg && <div className={msg.startsWith("✅") ? "ok" : "error"}>{msg}</div>}
+          <button className="btnPrimary" type="submit" disabled={!canCreate}>Créer le badge</button>
+          {msg && <div className={msg.startsWith("") ? "ok" : "error"}>{msg}</div>}
         </form>
       </div>
 
       <div className="card">
         <div className="rowBetween">
-          <h3>Badges</h3>
+          <h3>Badges enregistrés</h3>
           <button className="btn" onClick={load}>Rafraîchir</button>
         </div>
 
@@ -118,27 +136,32 @@ export default function Badges() {
             <tr>
               <th>UID</th>
               <th>Type</th>
-              <th>Expire</th>
+              <th>Expire le</th>
               <th>Assigné à</th>
               <th>Statut</th>
-              <th>Action</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
-            {badges.map(b => (
+            {badges.map((b) => (
               <tr key={b.id}>
                 <td>{b.uid}</td>
-                <td>{b.badge_type}</td>
+                <td>{b.badge_type === "temporary" ? "Temporaire" : "Permanent"}</td>
                 <td>{b.expires_at ? new Date(b.expires_at).toLocaleString() : "—"}</td>
                 <td>{b.owner_email || "— non assigné —"}</td>
                 <td>{b.is_currently_active ? "Actif" : "Expiré"}</td>
                 <td>
-                  <select value={b.owner_user_id || ""} onChange={(e) => assign(b.id, e.target.value)}>
-                    <option value="">— désassigner —</option>
-                    {users.map(u => (
-                      <option key={u.id} value={u.id}>{u.email}</option>
-                    ))}
-                  </select>
+                  <div className="row wrapRow">
+                    <select value={b.owner_user_id || ""} onChange={(e) => assign(b.id, e.target.value)}>
+                      <option value="">— désassigner —</option>
+                      {users.map((u) => (
+                        <option key={u.id} value={u.id}>{u.email}</option>
+                      ))}
+                    </select>
+                    <button className="btnDanger" type="button" onClick={() => removeBadge(b.id, b.uid)}>
+                      Supprimer
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}

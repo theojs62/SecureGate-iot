@@ -51,5 +51,18 @@ async function updateOwner({ id, ownerUserId }) {
   return rows[0] || null;
 }
 
+async function remove({ id }) {
+  if (!Number.isFinite(Number(id))) return null;
 
-module.exports = { list, create, updateOwner };
+  const { rows } = await pool.query(
+    `DELETE FROM badges
+     WHERE id = $1
+     RETURNING *`,
+    [Number(id)]
+  );
+
+  return rows[0] || null;
+}
+
+
+module.exports = { list, create, updateOwner, remove };

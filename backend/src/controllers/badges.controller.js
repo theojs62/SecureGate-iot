@@ -101,4 +101,15 @@ async function assignBadge(req, res) {
   res.json(badge);
 }
 
-module.exports = { listBadges, createBadge, assignBadge };
+
+async function deleteBadge(req, res) {
+  const id = toBigIntOrNull(req.params.id);
+  if (id === null) return res.status(400).json({ error: "invalid badge id" });
+
+  const badge = await BadgeModel.remove({ id });
+  if (!badge) return res.status(404).json({ error: "badge not found" });
+
+  return res.status(204).send();
+}
+
+module.exports = { listBadges, createBadge, assignBadge, deleteBadge };

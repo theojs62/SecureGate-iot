@@ -32,12 +32,6 @@ export default function Alerts() {
       <div className="rowBetween">
         <h3>Alertes</h3>
         <div className="row">
-          {/* si tu veux filtrer */}
-          {/* <select value={status} onChange={(e) => setStatus(e.target.value)}>
-            <option value="OPEN">OPEN</option>
-            <option value="ACK">ACK</option>
-            <option value="CLOSED">CLOSED</option>
-          </select> */}
           <button className="btn" onClick={load}>Rafraîchir</button>
         </div>
       </div>

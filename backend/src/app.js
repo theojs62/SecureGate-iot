@@ -6,7 +6,6 @@ const { notFound, errorHandler } = require("./middlewares/error");
 
 const authRoutes = require("./routes/auth.routes");
 const adminRoutes = require("./routes/admin.routes");
-const eventsRoutes = require("./routes/events.routes");
 const dashboardRoutes = require("./routes/dashboard.routes");
 const interphoneRoutes = require("./routes/interphone.routes");
 const badgesRoutes = require("./routes/badges.routes");
@@ -25,7 +24,6 @@ function createApp() {
   app.use("/api/users", require("./routes/users"));
   app.use("/api/admin", adminRoutes);
   app.use("/api/admin/badges", badgesRoutes);
-  app.use("/api/events", eventsRoutes);
   app.use("/api/dashboard", dashboardRoutes);
   app.use("/api/interphone", interphoneRoutes);
   app.use("/api/badges", require("./routes/badges.routes"));

@@ -1,19 +1,32 @@
 import React from "react";
 import { NavLink } from "react-router-dom";
 
+const links = [
+  { to: "/dashboard/overview", label: "Accueil" },
+  { to: "/dashboard/interphone", label: "Interphone" },
+  { to: "/dashboard/alerts", label: "Centre d’alertes" },
+  { to: "/dashboard/access-events", label: "Journal des accès"},
+  { to: "/dashboard/badges", label: "Gestion des badges" },
+  { to: "/dashboard/users", label: "Gestion des utilisateurs" },
+  { to: "/dashboard/stats", label: "Statistiques"}
+];
+
 export default function RightSidebar() {
   const linkClass = ({ isActive }) => (isActive ? "navItem active" : "navItem");
 
   return (
     <aside className="sidebarRight">
-      <div className="sidebarTitle">Navigation</div>
+      <div className="sidebarTitleWrap">
+        <div className="sidebarTitle">Navigation</div>
+      </div>
 
-      <NavLink className={linkClass} to="/dashboard/overview">Accueil</NavLink>
-      <NavLink className={linkClass} to="/dashboard/interphone">Interphone</NavLink>
-      <NavLink className={linkClass} to="/dashboard/alerts">Liste des Alertes</NavLink>
-      <NavLink className={linkClass} to="/dashboard/access-events">Historique  des accès Badge</NavLink>
-      <NavLink to="/dashboard/badges" className={linkClass}> Création de Badge</NavLink>
-      <NavLink className={linkClass} to="/dashboard/users">Utilisateurs</NavLink>
+      <nav className="sidebarNav">
+        {links.map((link) => (
+          <NavLink key={link.to} className={linkClass} to={link.to}>
+            <span>{link.label}</span>
+          </NavLink>
+        ))}
+      </nav>
     </aside>
   );
 }

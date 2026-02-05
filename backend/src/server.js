@@ -15,7 +15,6 @@ async function main() {
   app.listen(PORT, () => {
     console.log(`🚀 Backend lancé sur http://localhost:${PORT}`);
 
-    startMqtt(app);
     app.locals.mqttClient = startMqtt(app);
   });
 }

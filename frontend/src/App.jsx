@@ -8,6 +8,7 @@ import Users from "./pages/Users.jsx";
 import AccessEvents from "./pages/AccessEvents.jsx";
 import Interphone from "./pages/Interphone.jsx";
 import Badges from "./pages/Badges.jsx";
+import Statistics from "./pages/Statistics.jsx";
 
 
 function RequireAuth({ children }) {
@@ -35,6 +36,7 @@ export default function App() {
         <Route path="interphone" element={<Interphone />} />
         <Route path="badges" element={<Badges />} />
         <Route path="users" element={<Users />} />
+        <Route path="stats" element={<Statistics />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/dashboard/overview" replace />} />
