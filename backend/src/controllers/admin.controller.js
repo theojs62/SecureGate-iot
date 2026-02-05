@@ -116,7 +116,6 @@ async function createBadge(req, res) {
       "SELECT id, badge_id AS \"badgeId\" FROM users WHERE id = $1 LIMIT 1",
       [userId]
     );
-    const user = userRes.rows[0];
     if (!user) {
       await client.query("ROLLBACK");
       return res.status(404).json({ error: "User not found" });

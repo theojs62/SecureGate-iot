@@ -1,6 +1,6 @@
 const mqtt = require("mqtt");
 
-const URL = "mqtt://10.118.150.246:1883";
+const URL = "mqtt://10.121.195.246:1883";
 const OPTS = {
   username: "Sys_Admin",
   password: "zHq1tZS!G4$qRlfQ00!c",

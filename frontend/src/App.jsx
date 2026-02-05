@@ -6,6 +6,8 @@ import Overview from "./pages/Overview.jsx";
 import Alerts from "./pages/Alerts.jsx";
 import Users from "./pages/Users.jsx";
 import AccessEvents from "./pages/AccessEvents.jsx";
+import Interphone from "./pages/Interphone.jsx";
+import Badges from "./pages/Badges.jsx";
 
 
 function RequireAuth({ children }) {
@@ -30,6 +32,8 @@ export default function App() {
         <Route path="overview" element={<Overview />} />
         <Route path="access-events" element={<AccessEvents />} />
         <Route path="alerts" element={<Alerts />} />
+        <Route path="interphone" element={<Interphone />} />
+        <Route path="badges" element={<Badges />} />
         <Route path="users" element={<Users />} />
       </Route>
 

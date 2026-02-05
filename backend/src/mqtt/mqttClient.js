@@ -101,7 +101,21 @@ async function routeMqttMessage(app, client, topic, data) {
     return;
   }
 
-  
+  // ========= INTERPHONE REQUEST =========
+if (topic === "CESI/Request/Interphone") {
+  const device = data?.device || "UNKNOWN";
+
+  // crée une "demande en attente"
+  await pool.query(
+    `INSERT INTO interphone_requests (device, payload, status)
+     VALUES ($1, $2, 'PENDING')`,
+    [device, typeof data === "object" ? data : { raw: String(data) }]
+  );
+
+  console.log("🔔 Interphone request enregistrée:", device);
+  return;
+}
+
   if (topic === "CESI/Request/Badge") {
     const uid = data?.uid;
     const device = data?.device || "UNKNOWN";
@@ -112,12 +126,21 @@ async function routeMqttMessage(app, client, topic, data) {
       return;
     }
 
-    const badgeRes = await pool.query(
-      "SELECT id, owner_user_id AS user_id FROM badges WHERE uid=$1 LIMIT 1",
-      [uid]
+        const badgeRes = await pool.query(
+    `SELECT id, owner_user_id, is_active, badge_type, expires_at
+    FROM badges
+    WHERE uid=$1
+    LIMIT 1`,
+    [uid]
     );
     const badge = badgeRes.rows[0] || null;
-    const autorise = !!badge;
+
+    let autorise = false;
+    if (badge && badge.is_active) {
+    if (badge.badge_type === "permanent") autorise = true;
+    else autorise = badge.expires_at && new Date(badge.expires_at) > new Date();
+    }
+
 
     await pool.query(
       `INSERT INTO access_events (badge_uid, result, badge_id, user_id, topic, device, ts)

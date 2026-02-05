@@ -18,14 +18,18 @@ async function ensureSchema() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )`,
     `CREATE TABLE IF NOT EXISTS badges (
-      id BIGSERIAL PRIMARY KEY,
-      uid TEXT NOT NULL UNIQUE,
-      owner_user_id BIGINT,
-      role TEXT NOT NULL DEFAULT 'user',
-      is_active BOOLEAN NOT NULL DEFAULT true,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )`,
+  id BIGSERIAL PRIMARY KEY,
+  uid TEXT NOT NULL UNIQUE,
+  owner_user_id BIGINT,
+  role TEXT NOT NULL DEFAULT 'user',
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+)`,
+`ALTER TABLE badges ADD COLUMN IF NOT EXISTS badge_type TEXT NOT NULL DEFAULT 'permanent'`,
+`ALTER TABLE badges ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ NULL`,
+`CREATE INDEX IF NOT EXISTS badges_owner_user_id_idx ON badges(owner_user_id)`,
+`CREATE INDEX IF NOT EXISTS badges_expires_at_idx ON badges(expires_at)`,
     `CREATE TABLE IF NOT EXISTS zones (
       id BIGSERIAL PRIMARY KEY,
       name TEXT NOT NULL UNIQUE,
@@ -88,7 +92,19 @@ async function ensureSchema() {
       ack_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )`,
+    )` ,
+    `CREATE TABLE IF NOT EXISTS interphone_requests (
+  id BIGSERIAL PRIMARY KEY,
+  device TEXT NOT NULL DEFAULT 'UNKNOWN',
+  payload JSONB NULL,
+  status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING','ACCEPTED','REFUSED')),
+  decided_by BIGINT NULL REFERENCES users(id) ON DELETE SET NULL,
+  decided_at TIMESTAMPTZ NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+)` ,
+
+"CREATE INDEX IF NOT EXISTS interphone_requests_status_idx ON interphone_requests(status)",
+"CREATE INDEX IF NOT EXISTS interphone_requests_created_idx ON interphone_requests(created_at DESC)",
     "CREATE INDEX IF NOT EXISTS access_logs_created_at_idx ON access_logs (created_at DESC)",
     "CREATE INDEX IF NOT EXISTS access_logs_zone_idx ON access_logs (zone_id)",
     "CREATE INDEX IF NOT EXISTS access_events_created_at_idx ON access_events (created_at DESC)",
