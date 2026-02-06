@@ -1,3 +1,4 @@
+const crypto = require("crypto");
 const BadgeModel = require("../models/badge.model");
 const { pool } = require("../config/db");
 
@@ -11,6 +12,11 @@ async function listBadges(req, res) {
   res.json(rows);
 }
 
+function buildEnrollSignature({ uid, hasExpiry, horaire }) {
+  const secret = process.env.MQTT_ENROLL_SIGNATURE_SECRET || process.env.JWT_SECRET || "change-me";
+  const data = `${uid}|${hasExpiry ? "yes" : "no"}|${horaire}`;
+  return crypto.createHmac("sha256", secret).update(data).digest("hex").slice(0, 32);
+}
 
 function publishBadgeCreatedEvent(req, badge) {
   const client = req.app?.locals?.mqttClient;
@@ -19,22 +25,37 @@ function publishBadgeCreatedEvent(req, badge) {
     return;
   }
 
-  const topic = process.env.MQTT_BADGE_CREATED_TOPIC || "CESI/Badge/Created";
+  const topic = process.env.MQTT_ENROLL_RESPONSE_TOPIC || "CESI/Response/Enroll";
+  const horaire = new Date().toISOString();
+  const hasExpiry = Boolean(badge.expires_at);
+  const signature = buildEnrollSignature({ uid: badge.uid, hasExpiry, horaire });
+
   const payload = JSON.stringify({
     uid: badge.uid,
-    badgeId: badge.id,
+    signature,
+    badgeId: String(badge.id),
     type: badge.badge_type,
-    ownerUserId: badge.owner_user_id,
-    expiresAt: badge.expires_at
+    expiresAt: badge.expires_at,
+    horaire
   });
 
   client.publish(topic, payload, { qos: 1, retain: false }, (err) => {
     if (err) {
-      console.error("❌ MQTT publish badge create error:", err.message);
+      console.error(" MQTT publish badge create error:", err.message);
       return;
     }
-    console.log(` MQTT badge créé envoyé → ${topic} ${payload}`);
+    console.log(` MQTT enroll response envoyé → ${topic} ${payload}`);
   });
+}
+
+async function getEnrollRequest(req, res) {
+  const enroll = req.app?.locals?.latestEnrollRequest || null;
+  res.json(enroll);
+}
+
+async function consumeEnrollRequest(req, res) {
+  req.app.locals.latestEnrollRequest = null;
+  res.json({ ok: true });
 }
 
 async function createBadge(req, res) {
@@ -43,18 +64,15 @@ async function createBadge(req, res) {
   if (!uid || typeof uid !== "string") return res.status(400).json({ error: "uid is required" });
   if (!isValidBadgeType(type)) return res.status(400).json({ error: "type must be permanent|temporary" });
 
-  // si ownerUserId est fourni, vérifier qu'il existe
   if (ownerUserId !== null) {
     const check = await pool.query(`SELECT id FROM users WHERE id=$1 LIMIT 1`, [Number(ownerUserId)]);
     if (check.rows.length === 0) return res.status(400).json({ error: "ownerUserId not found" });
   }
 
-  // si temporary, expiresAt requis
   if (type === "temporary" && !expiresAt) {
     return res.status(400).json({ error: "expiresAt required for temporary badge" });
   }
 
-  // convertir expiresAt ISO -> Date côté pg
   const expiresAtValue = expiresAt ? new Date(expiresAt) : null;
   if (expiresAt && Number.isNaN(expiresAtValue.getTime())) {
     return res.status(400).json({ error: "expiresAt must be a valid datetime" });
@@ -75,7 +93,6 @@ async function createBadge(req, res) {
   res.status(201).json(badge);
 }
 
-
 function toBigIntOrNull(v) {
   if (v === null || v === undefined) return null;
   if (v === "") return null;
@@ -89,7 +106,6 @@ async function assignBadge(req, res) {
 
   const ownerUserId = toBigIntOrNull(req.body.ownerUserId);
 
-  // si ownerUserId est fourni, vérifier qu'il existe
   if (ownerUserId !== null) {
     const check = await pool.query(`SELECT id FROM users WHERE id=$1 LIMIT 1`, [ownerUserId]);
     if (check.rows.length === 0) return res.status(400).json({ error: "ownerUserId not found" });
@@ -101,7 +117,6 @@ async function assignBadge(req, res) {
   res.json(badge);
 }
 
-
 async function deleteBadge(req, res) {
   const id = toBigIntOrNull(req.params.id);
   if (id === null) return res.status(400).json({ error: "invalid badge id" });
@@ -112,4 +127,4 @@ async function deleteBadge(req, res) {
   return res.status(204).send();
 }
 
-module.exports = { listBadges, createBadge, assignBadge, deleteBadge };
+module.exports = { listBadges, createBadge, assignBadge, deleteBadge, getEnrollRequest, consumeEnrollRequest };

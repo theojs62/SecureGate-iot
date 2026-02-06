@@ -17,8 +17,8 @@ async function listAccessEvents(req, res) {
               ELSE jsonb_build_object('_id', b.id, 'uid', b.uid)
             END AS "badgeId"
      FROM access_events ae
-     LEFT JOIN users u ON u.id = ae.user_id
      LEFT JOIN badges b ON b.id = ae.badge_id
+     LEFT JOIN users u ON u.id = COALESCE(ae.user_id, b.owner_user_id)
      ORDER BY ae.created_at DESC
      LIMIT $1`,
     [limit]

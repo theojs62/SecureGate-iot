@@ -108,20 +108,7 @@ export default function Interphone() {
         {msg && <div style={{ marginTop: 12 }} className={msg.startsWith("") ? "ok" : "error"}>{msg}</div>}
       </div>
 
-      <div className="card" style={{ gridColumn: "span 4" }}>
-        <h3 style={{ marginTop: 0 }}>Dernière action</h3>
-        {!lastAction ? (
-          <div className="muted">Aucune action sur cette session.</div>
-        ) : (
-          <div className="notifItem">
-            <div><b>Demande #{lastAction.id}</b></div>
-            <div>Device: {lastAction.device || "UNKNOWN"}</div>
-            <div>Décision: {lastAction.decision === "ACCEPTED" ? "ACCEPTER" : "REFUSER"}</div>
-            <div className="muted small">{new Date(lastAction.at).toLocaleString()}</div>
-          </div>
-        )}
-        
-      </div>
+     
     </div>
   );
 }

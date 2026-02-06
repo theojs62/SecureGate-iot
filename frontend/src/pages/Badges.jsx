@@ -1,9 +1,11 @@
+
 import React, { useEffect, useMemo, useState } from "react";
 import { http } from "../api/http.js";
 
 export default function Badges() {
   const [badges, setBadges] = useState([]);
   const [users, setUsers] = useState([]);
+  const [enrollRequest, setEnrollRequest] = useState(null);
 
   const [uid, setUid] = useState("");
   const [type, setType] = useState("permanent");
@@ -12,16 +14,24 @@ export default function Badges() {
 
   const [msg, setMsg] = useState("");
 
+  const getUserId = (u) => u.id ?? u._id;
+
   const load = async () => {
-    const [b, u] = await Promise.all([
+    const [b, u, enroll] = await Promise.all([
       http.get("/api/admin/badges?limit=200"),
-      http.get("/api/admin/users?limit=500")
+      http.get("/api/admin/users?limit=500"),
+      http.get("/api/admin/badges/enroll-request")
     ]);
     setBadges(b.data);
     setUsers(u.data);
+    setEnrollRequest(enroll.data);
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    const t = setInterval(() => load().catch(() => null), 4000);
+    return () => clearInterval(t);
+  }, []);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -70,6 +80,17 @@ export default function Badges() {
     await load();
   };
 
+  const useEnrollUid = async () => {
+    if (!enrollRequest?.uid) return;
+    setUid(enrollRequest.uid);
+    setEnrollRequest(null);
+    try {
+      await http.post("/api/admin/badges/enroll-request/consume");
+    } catch (err) {
+      console.warn("consume enroll request failed", err?.message);
+    }
+  };
+
   const removeBadge = async (id, uidToDelete) => {
     const confirmed = window.confirm(`Supprimer définitivement le badge ${uidToDelete} ?`);
     if (!confirmed) return;
@@ -85,12 +106,33 @@ export default function Badges() {
 
   const canCreate = useMemo(() => uid.trim().length > 0, [uid]);
 
+  const existingBadge = useMemo(
+    () => badges.find((b) => enrollRequest?.uid && b.uid === enrollRequest.uid),
+    [badges, enrollRequest]
+  );
+
   return (
     <div className="">
       <div className="card">
         <div className="badgeCreateHeader">
           <h3>Créer un badge</h3>
           <p className="muted small">Ajoutez un nouveau badge et assignez-le si besoin.</p>
+        </div>
+
+        <div className="enrollBox">
+          <div className="small"><b>UID reçu</b></div>
+          <div>{enrollRequest?.uid || "Aucun UID reçu"}</div>
+          {enrollRequest?.receivedAt && (
+            <div className="small muted">Reçu le {new Date(enrollRequest.receivedAt).toLocaleString()}</div>
+          )}
+          {existingBadge && (
+            <div className="small muted">Déjà connu: {existingBadge.owner_email || "non assigné"}</div>
+          )}
+          {enrollRequest?.uid && (
+            <button className="btnSmall" type="button" onClick={useEnrollUid}>
+              Utiliser cet UID
+            </button>
+          )}
         </div>
 
         <form onSubmit={submit} className="form">
@@ -113,11 +155,14 @@ export default function Badges() {
           <label>Utilisateur (optionnel)</label>
           <select value={ownerUserId} onChange={(e) => setOwnerUserId(e.target.value)}>
             <option value="">— non assigné —</option>
-            {users.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.email} ({u.role})
-              </option>
-            ))}
+            {users.map((u) => {
+              const userId = getUserId(u);
+              return (
+                <option key={userId} value={userId}>
+                  {u.email} ({u.role})
+                </option>
+              );
+            })}
           </select>
 
           <button className="btnPrimary" type="submit" disabled={!canCreate}>Créer le badge</button>
@@ -154,9 +199,10 @@ export default function Badges() {
                   <div className="row wrapRow">
                     <select value={b.owner_user_id || ""} onChange={(e) => assign(b.id, e.target.value)}>
                       <option value="">— désassigner —</option>
-                      {users.map((u) => (
-                        <option key={u.id} value={u.id}>{u.email}</option>
-                      ))}
+                      {users.map((u) => {
+                        const userId = getUserId(u);
+                        return <option key={userId} value={userId}>{u.email}</option>;
+                      })}
                     </select>
                     <button className="btnDanger" type="button" onClick={() => removeBadge(b.id, b.uid)}>
                       Supprimer

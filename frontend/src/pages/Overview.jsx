@@ -58,7 +58,7 @@ function LatestAccessEventsCard() {
   return (
     <div className="card" style={{ gridColumn: "span 12" }}>
       <div className="rowBetween">
-        <h3>10 derniers accès badges</h3>
+        <h3>5 derniers accès badges</h3>
         <button className="btn" onClick={load}>Rafraîchir</button>
       </div>
 

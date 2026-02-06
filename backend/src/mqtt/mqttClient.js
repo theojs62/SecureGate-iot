@@ -101,6 +101,22 @@ async function routeMqttMessage(app, client, topic, data) {
     return;
   }
 
+  if (topic === "CESI/Request/Enroll") {
+    const uid = data?.uid;
+    if (!uid) {
+      console.log(" CESI/Request/Enroll sans uid");
+      return;
+    }
+
+    app.locals.latestEnrollRequest = {
+      uid,
+      receivedAt: new Date().toISOString(),
+      payload: typeof data === "object" ? data : { raw: String(data) }
+    };
+
+    console.log("UID d'enrôlement reçu:", uid);
+    return;
+  }
   // ========= INTERPHONE REQUEST =========
 if (topic === "CESI/Request/Interphone") {
   const device = data?.device || "UNKNOWN";
@@ -116,19 +132,18 @@ if (topic === "CESI/Request/Interphone") {
   return;
 }
 
-  if (topic === "CESI/Request/Badge") {
+  if (topic === "CESI/Request/Access") {
     const uid = data?.uid;
     const device = data?.device || "UNKNOWN";
     const ts = data?.ts;
 
     if (!uid) {
-      console.log(" CESI/Request/Badge sans uid:", data);
+      console.log(" CESI/Request/Access sans uid:", data);
       return;
     }
 
         const badgeRes = await pool.query(
-    `SELECT id, owner_user_id, is_active, badge_type, expires_at
-    FROM badges
+   `SELECT id, owner_user_id AS user_id, is_active, badge_type, expires_at    FROM badges
     WHERE uid=$1
     LIMIT 1`,
     [uid]
@@ -152,13 +167,14 @@ if (topic === "CESI/Request/Interphone") {
 
     const responsePayload = JSON.stringify({ uid, autorise });
 
+
     if (!client?.connected) {
       console.log(" MQTT pas connecté -> réponse badge ignorée");
       return;
     }
 
-    client.publish("CESI/Response/Badge", responsePayload, { qos: 1, retain: false });
-    console.log(" MQTT réponse → CESI/Response/Badge", responsePayload);
+    client.publish("CESI/Response/Access", responsePayload, { qos: 2, retain: false });
+    console.log(" MQTT réponse → CESI/Response/Access", responsePayload);
 
     if (!autorise) {
       await createAlert({
